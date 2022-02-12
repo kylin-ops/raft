@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -26,6 +27,13 @@ type Member struct {
 	Status   string `json:"status"` // ok error
 	//Term              int64  `json:"term"`                // leader 发生任期信息
 	LastHeartbeatTime int64 `json:"last_heartbeat_time"` // 最后一次接收时间
+}
+
+func deepCopyJSON(src interface{}) map[string]interface{} {
+	var dest map[string]interface{}
+    jsonStr, _ := json.Marshal(src)
+    _ = json.Unmarshal(jsonStr, &dest)
+    return dest
 }
 
 // Raft 声明raft
@@ -58,8 +66,9 @@ func (r *Raft) ServiceResponseElection(leader *Leader) error {
 		return fmt.Errorf("选举者%s的任期%d小于当前任期%d", leader.LeaderId, leader.Term, r.CurrentTerm)
 	}
 	if r.VotedFor == leader.LeaderId {
-		r.Logger.Debugf("节点已经向%s投票,本次请求不做任何处置", leader.LeaderId)
-		return nil
+		// r.Logger.Debugf("节点已经向%s投票,本次请求不做任何处置", leader.LeaderId)
+		// return nil
+		return fmt.Errorf("节点已经向%s投票,本次请求不做任何处置", leader.LeaderId)
 	}
 	if r.VotedFor != "" {
 		return fmt.Errorf("节点的选票已经使用,不能给%s投票", leader.LeaderId)
@@ -122,7 +131,10 @@ func (r *Raft) sendElectionVotesToAllMember() {
 		wg.Add(1)
 		go func(m *Member) {
 			defer wg.Done()
-			if m.Status != "ok" {
+			r.Mu.Lock()
+			r.Logger.Debugf("election - %s 准备对本节点的投票, 节点状态%s, 获取投票数%d", m.Address, r.Members[m.Id].Status, r.VotedCount)
+			r.Mu.Unlock()
+			if r.Members[m.Id].Status != "ok" {
 				r.Mu.Lock()
 				addr := m.Address
 				tmpTerm := r.TempTerm
@@ -139,26 +151,27 @@ func (r *Raft) sendElectionVotesToAllMember() {
 					Timeout: time.Second * 1,
 				})
 				if err != nil {
-					r.Logger.Warnf("election - 拉取%s的选票错误, 错误信息:%s", m.Address, err.Error())
+					r.Logger.Warnf("election - 拉取%s的选票错误, 错误信息:%s", addr, err.Error())
 					return
 				}
 				if resp.StatusCode() == 201 {
 					msg, _ := resp.Text()
+					r.Mu.Lock()
 					m.Status = "ok"
-					r.Logger.Debugf("election -  拉取%s选取失败,选票投给其他节点 %s", m.Address, msg)
+					r.Mu.Unlock()
+					r.Logger.Debugf("election -  拉取%s选取失败,选票投给其他节点 %s", addr, msg)
 					return
 				}
 				if resp.StatusCode() != 200 {
-					r.Logger.Warnf("election - %s 拉取选票状态码错误:%s", m.Address, resp.StatusCode)
+					r.Logger.Warnf("election - %s 拉取选票状态码错误:%s", addr, resp.StatusCode)
 					return
 				}
-				r.Logger.Debugf("election - %s 完成对本节点的投票", m.Address)
-
 				r.Mu.Lock()
-				m.Status = "ok"
+				r.Members[id].Status = "ok"
 				r.CurrentTerm++
 				r.TempTerm++
 				r.VotedCount++
+				r.Logger.Debugf("election - %s 完成对本节点的投票, 节点状态%s, 获取投票数%d", addr, r.Members[id].Status, r.VotedCount)
 				r.Mu.Unlock()
 			}
 		}(member)
@@ -181,7 +194,7 @@ func (r *Raft) sendHeartbeatToAllMember() {
 			add := m.Address
 			id := r.Id
 			term := r.CurrentTerm
-			members := r.Members
+			members := deepCopyJSON(r.Members) 
 			r.Mu.Unlock()
 
 			url := "http://" + add + "/api/v1/heartbeat"
@@ -191,21 +204,21 @@ func (r *Raft) sendHeartbeatToAllMember() {
 				Timeout: time.Second * 1,
 			})
 			if err != nil {
-				r.Logger.Warnf("heartbeat - failed to request heartbeat from %s, error message:%s", m.Address, err.Error())
+				r.Logger.Warnf("heartbeat - failed to request heartbeat from %s, error message:%s", add, err.Error())
 				return
 			}
 			if resp.StatusCode() == 201 {
 				msg, _ := resp.Text()
 				m.Status = "ok"
-				r.Logger.Debugf("heartbeat - %s 心跳信息处理失败: %s", m.Address, msg)
+				r.Logger.Debugf("heartbeat - %s 心跳信息处理失败: %s", add, msg)
 				return
 			}
 			if resp.StatusCode() != 200 {
-				r.Logger.Warnf("heartbeat - %s 心跳信息发生失败", m.Address)
+				r.Logger.Warnf("heartbeat - %s 心跳信息发生失败", add)
 				return
 			}
 			r.Members[m.Id].LastHeartbeatTime = time.Now().Unix()
-			_, _ = grequest.Post("http://"+m.Address+"/api/v1/sync_member", &grequest.RequestOptions{
+			_, _ = grequest.Post("http://"+add+"/api/v1/sync_member", &grequest.RequestOptions{
 				Data:    members,
 				Json:    true,
 				Timeout: time.Second * 1,
@@ -253,7 +266,7 @@ func (r *Raft) BackendHeatbeat() {
 // leader 联系失败，重新选举
 func (r *Raft) BackendReCandidate() {
 	for {
-		time.Sleep(time.Second)
+		time.Sleep(time.Second * 2)
 		r.Mu.Lock()
 		role := r.Role
 		members := r.Members
@@ -272,6 +285,7 @@ func (r *Raft) BackendReCandidate() {
 				}
 			}
 			r.VotedFor = ""
+			//r.VotedCount = 0
 			r.Logger.Debugf("初始化 - 锁定选票超时, 节点可投新的选票")
 		}
 		if role == "candidate" || heartbeatTime == 0 {
