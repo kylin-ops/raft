@@ -29,12 +29,12 @@ type Member struct {
 	LastHeartbeatTime int64 `json:"last_heartbeat_time"` // 最后一次接收时间
 }
 
-func deepCopyJSON(src interface{}) map[string]interface{} {
-	var dest map[string]interface{}
-    jsonStr, _ := json.Marshal(src)
-    _ = json.Unmarshal(jsonStr, &dest)
-    return dest
-}
+// func deepCopyJSON(src interface{}) map[string]interface{} {
+// 	var dest map[string]interface{}
+//     jsonStr, _ := json.Marshal(src)
+//     _ = json.Unmarshal(jsonStr, &dest)
+//     return dest
+// }
 
 // Raft 声明raft
 type Raft struct {
@@ -48,7 +48,7 @@ type Raft struct {
 	VotedCount        int                `json:"voted_count"`         // 获得的票数
 	Role              string             `json:"role"`                // 0 follower  1 candidate  2 leader
 	CurrentLeader     string             `json:"current_leader"`      // 集群当前的leader
-	Timeout           int64              `json:"timeout"`             // 超时时间
+	Timeout           int64              `json:"timeout"`             // 超时时间心跳超过多少时间需要初始化重新选举
 	Members           map[string]*Member `json:"members"`             // 所有成员
 	Logger            logger.Logger      `json:"-"`
 	NoElection        bool               `json:"NoElection"` // 不参与leader选举
@@ -126,15 +126,22 @@ func (r *Raft) sendElectionVotesToAllMember() {
 	if r.Role != "candidate" {
 		return
 	}
+	var members map[string]*Member
+	r.Mu.Lock()
+	data, _ := json.Marshal(r.Members)
+	r.Mu.Unlock()
+	_ = json.Unmarshal(data, &members)
+
 	wg := sync.WaitGroup{}
-	for _, member := range r.Members {
+	for _, member := range members {
 		wg.Add(1)
 		go func(m *Member) {
 			defer wg.Done()
 			r.Mu.Lock()
 			r.Logger.Debugf("election - %s 准备对本节点的投票, 节点状态%s, 获取投票数%d", m.Address, r.Members[m.Id].Status, r.VotedCount)
+			status := r.Members[m.Id].Status
 			r.Mu.Unlock()
-			if r.Members[m.Id].Status != "ok" {
+			if status != "ok" {
 				r.Mu.Lock()
 				addr := m.Address
 				tmpTerm := r.TempTerm
@@ -188,13 +195,18 @@ func (r *Raft) sendElectionVotesToAllMember() {
 
 // 向所有成员发生心跳信息,并向成员发生成员信息
 func (r *Raft) sendHeartbeatToAllMember() {
-	for _, _member := range r.Members {
+	var members map[string]*Member
+	r.Mu.Lock()
+	data, _ := json.Marshal(r.Members)
+	r.Mu.Unlock()
+	_ = json.Unmarshal(data, &members)
+
+	for _, _member := range members {
 		go func(m *Member) {
 			r.Mu.Lock()
 			add := m.Address
 			id := r.Id
 			term := r.CurrentTerm
-			members := deepCopyJSON(r.Members) 
 			r.Mu.Unlock()
 
 			url := "http://" + add + "/api/v1/heartbeat"
@@ -209,7 +221,9 @@ func (r *Raft) sendHeartbeatToAllMember() {
 			}
 			if resp.StatusCode() == 201 {
 				msg, _ := resp.Text()
-				m.Status = "ok"
+				r.Mu.Lock()
+				r.Members[m.Id].Status = "ok"
+				r.Mu.Unlock()
 				r.Logger.Debugf("heartbeat - %s 心跳信息处理失败: %s", add, msg)
 				return
 			}
@@ -217,12 +231,16 @@ func (r *Raft) sendHeartbeatToAllMember() {
 				r.Logger.Warnf("heartbeat - %s 心跳信息发生失败", add)
 				return
 			}
+			r.Mu.Lock()
 			r.Members[m.Id].LastHeartbeatTime = time.Now().Unix()
+			r.Mu.Unlock()
+			r.Mu.Lock()
 			_, _ = grequest.Post("http://"+add+"/api/v1/sync_member", &grequest.RequestOptions{
 				Data:    members,
 				Json:    true,
 				Timeout: time.Second * 1,
 			})
+			r.Mu.Unlock()
 		}(_member)
 	}
 }
