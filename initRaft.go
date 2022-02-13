@@ -10,7 +10,7 @@ import (
 
 
 func StartRaft(id, addr string, port int, logg logger.Logger, members ...raft.Member) {
-	r := raft.Raft{Address: fmt.Sprintf("%s:%d", addr, port), Role: "candidate", Id: id, Timeout: 5, NoElection: true}
+	r := raft.Raft{Address: fmt.Sprintf("%s:%d", addr, port), Role: "candidate", Id: id, Timeout: 5}
 	if logg == nil {
 		r.Logger = &logger.Log{}
 	}

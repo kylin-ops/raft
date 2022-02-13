@@ -2,7 +2,6 @@ package raft
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -96,9 +95,9 @@ func (r *Raft) ServiceResponseHeartbeat(leader *Leader) error {
 		}
 		return nil
 	}
-	if r.CurrentTerm >= leader.Term {
-		return errors.New("leader发生变化,当任期小于原来的任期")
-	}
+	// if r.CurrentTerm >= leader.Term {
+	// 	return errors.New("leader发生变化,当任期小于原来的任期")
+	// }
 	if r.Id != leader.LeaderId && r.Role != "follower" {
 		r.Role = "follower"
 	}
@@ -121,6 +120,47 @@ func (r *Raft) ServiceResponseSyncMember(members map[string]*Member) {
 	}
 }
 
+func (r *Raft) sendElectionVotes(m *Member) {
+	if m.Status == "ok" {
+		r.Logger.Debugf("%s节点准备向%s节点发起投票请求 - %s选票已经使用,不需要重复投票,当前已获得选票数%d", r.Id, m.Id, m.Id, r.VotedCount)
+		return
+	}
+	r.Logger.Debugf("%s节点准备向%s发起投票请求 - 当前已获得选票数%d", r.Id, m.Id, r.VotedCount)
+	tmpTerm := r.TempTerm
+	if r.CurrentTerm > tmpTerm {
+		tmpTerm = r.CurrentTerm
+	}
+	resp, err := grequest.Post("http://"+m.Address+"/api/v1/election", &grequest.RequestOptions{
+		Data:    Leader{LeaderId: r.Id, Term: tmpTerm + 1},
+		Json:    true,
+		Timeout: time.Second * 1,
+	})
+	if err != nil {
+		r.Logger.Warnf("%s节点请求%s节点的选票 - 请求地址:%s, 请求错误, 错误信息:%s", r.Id, m.Id, m.Address, err.Error())
+		return
+	}
+	if resp.StatusCode() == 201 {
+		msg, _ := resp.Text()
+		r.Mu.Lock()
+		r.Members[r.Id].Status = "ok"
+		r.Mu.Unlock()
+		r.Logger.Debugf("%s节点请求%s节点的选票 - 选票投给其他节点 %s", r.Id, m.Id, msg)
+		return
+	}
+	if resp.StatusCode() != 200 {
+		r.Logger.Warnf("%s节点请求%s节点的选票 - 拉取选票状态码错误:%s", r.Id, m.Id, resp.StatusCode)
+		return
+	}
+	r.Mu.Lock()
+	r.Members[m.Id].Status = "ok"
+	r.CurrentTerm++
+	r.TempTerm = r.CurrentTerm
+	r.VotedCount++
+	r.Logger.Debugf("%s节点请求%s节点的选票 - 完成对本节点的投票, 节点角色%s, 获取投票数%d", r.Id, m.Id, r.Role, r.VotedCount)
+	r.Mu.Unlock()
+
+}
+
 // 现所有成员发选举信息
 func (r *Raft) sendElectionVotesToAllMember() {
 	if r.Role != "candidate" {
@@ -131,56 +171,12 @@ func (r *Raft) sendElectionVotesToAllMember() {
 	data, _ := json.Marshal(r.Members)
 	r.Mu.Unlock()
 	_ = json.Unmarshal(data, &members)
-
 	wg := sync.WaitGroup{}
 	for _, member := range members {
 		wg.Add(1)
 		go func(m *Member) {
 			defer wg.Done()
-			r.Mu.Lock()
-			r.Logger.Debugf("election - %s 准备对本节点的投票, 节点状态%s, 获取投票数%d", m.Address, r.Members[m.Id].Status, r.VotedCount)
-			status := r.Members[m.Id].Status
-			r.Mu.Unlock()
-			if status != "ok" {
-				r.Mu.Lock()
-				addr := m.Address
-				tmpTerm := r.TempTerm
-				if r.CurrentTerm > tmpTerm {
-					tmpTerm = r.CurrentTerm
-				}
-				id := r.Id
-				r.Mu.Unlock()
-
-				url := "http://" + addr + "/api/v1/election"
-				resp, err := grequest.Post(url, &grequest.RequestOptions{
-					Data:    Leader{LeaderId: id, Term: tmpTerm + 1},
-					Json:    true,
-					Timeout: time.Second * 1,
-				})
-				if err != nil {
-					r.Logger.Warnf("election - 拉取%s的选票错误, 错误信息:%s", addr, err.Error())
-					return
-				}
-				if resp.StatusCode() == 201 {
-					msg, _ := resp.Text()
-					r.Mu.Lock()
-					m.Status = "ok"
-					r.Mu.Unlock()
-					r.Logger.Debugf("election -  拉取%s选取失败,选票投给其他节点 %s", addr, msg)
-					return
-				}
-				if resp.StatusCode() != 200 {
-					r.Logger.Warnf("election - %s 拉取选票状态码错误:%s", addr, resp.StatusCode)
-					return
-				}
-				r.Mu.Lock()
-				r.Members[id].Status = "ok"
-				r.CurrentTerm++
-				r.TempTerm++
-				r.VotedCount++
-				r.Logger.Debugf("election - %s 完成对本节点的投票, 节点状态%s, 获取投票数%d", addr, r.Members[id].Status, r.VotedCount)
-				r.Mu.Unlock()
-			}
+			r.sendElectionVotes(m)
 		}(member)
 	}
 	wg.Wait()
@@ -216,7 +212,7 @@ func (r *Raft) sendHeartbeatToAllMember() {
 				Timeout: time.Second * 1,
 			})
 			if err != nil {
-				r.Logger.Warnf("heartbeat - failed to request heartbeat from %s, error message:%s", add, err.Error())
+				r.Logger.Warnf("heartbeat - 向%s发送心跳信息错误, 错误信息:%s", add, err.Error())
 				return
 			}
 			if resp.StatusCode() == 201 {
@@ -247,14 +243,9 @@ func (r *Raft) sendHeartbeatToAllMember() {
 
 // 后台执行选举任务
 func (r *Raft) BackendElection() {
-	rand.Seed(time.Now().UnixNano())
 	for {
-		r.Mu.Lock()
-		role := r.Role
-		noElection := r.NoElection
-		r.Mu.Unlock()
-
-		if role != "candidate" || noElection {
+		rand.Seed(time.Now().UnixNano())
+		if r.Role != "candidate" || r.NoElection {
 			time.Sleep(time.Second)
 			continue
 		}
@@ -268,61 +259,69 @@ func (r *Raft) BackendElection() {
 // 后台有leader发生心跳信息
 func (r *Raft) BackendHeatbeat() {
 	for {
-		r.Mu.Lock()
-		role := r.Role
-		leader := r.CurrentLeader
-		id := r.Id
-		r.Mu.Unlock()
-		if role == "leader" && leader == id {
+		if (r.Role == "leader" && r.CurrentLeader == r.Id) || len(r.Members)/2 < r.VotedCount {
 			r.Logger.Debugf("send heatbert")
 			r.sendHeartbeatToAllMember()
-		}
+		} 
+		// else {
+		// 	r.Logger.Debugf("heartbeat - 节点%s的角色是%s,当前的leader是%s,选票有%d", r.Id, r.Role, r.CurrentLeader, r.VotedCount)
+		// }
 		time.Sleep(time.Second)
 	}
 }
 
 // leader 联系失败，重新选举
 func (r *Raft) BackendReCandidate() {
-	for {
-		time.Sleep(time.Second * 2)
-		r.Mu.Lock()
-		role := r.Role
-		members := r.Members
-		heartbeatTime := r.LastHeartbeatTime
-		timeout := r.Timeout
-		r.Mu.Unlock()
-
-		if role == "candidate" {
-			for _, m := range members {
-				if time.Now().Unix()-m.LastHeartbeatTime > r.Timeout {
-					r.Mu.Lock()
-					for id := range r.Members {
-						r.Members[id].Status = ""
-					}
-					r.Mu.Unlock()
-				}
-			}
-			r.VotedFor = ""
-			//r.VotedCount = 0
-			r.Logger.Debugf("初始化 - 锁定选票超时, 节点可投新的选票")
-		}
-		if role == "candidate" || heartbeatTime == 0 {
-			continue
-		}
-		if time.Now().Unix()-heartbeatTime > timeout {
+	go func() {
+		for {
+			time.Sleep(time.Second * 1)
+			var members map[string]*Member
 			r.Mu.Lock()
-			r.Role = "candidate"
-			r.CurrentLeader = ""
-			r.VotedCount = 0
-			r.VotedFor = ""
-			for id := range r.Members {
-				r.Members[id].LeaderId = ""
-				r.Members[id].Role = ""
-				r.Members[id].Status = ""
-			}
+			data, _ := json.Marshal(r.Members)
 			r.Mu.Unlock()
-			r.Logger.Debugf("初始化 - 心跳超时，节点初始化重新参与选举")
+			_ = json.Unmarshal(data, &members)
+			if r.Role == "candidate" {
+				for _, m := range members {
+					if time.Now().Unix()-m.LastHeartbeatTime > r.Timeout {
+						r.Mu.Lock()
+						for id := range r.Members {
+							r.Members[id].Status = ""
+						}
+						r.Mu.Unlock()
+					}
+				}
+				r.VotedFor = ""
+				r.VotedCount = 0
+				r.Logger.Debugf("初始化 - 锁定选票超时, 节点可投新的选票")
+			}
+			if r.Role == "candidate" || r.LastHeartbeatTime == 0 {
+				continue
+			}
+			if time.Now().Unix()-r.LastHeartbeatTime > r.Timeout {
+				r.Mu.Lock()
+				r.CurrentLeader = ""
+				r.VotedFor = ""
+				for id := range r.Members {
+					r.Members[id].LeaderId = ""
+					r.Members[id].Role = ""
+					r.Members[id].Status = ""
+				}
+				r.Mu.Unlock()
+				r.Logger.Debugf("初始化 - 心跳超时，节点初始化重新参与选举")
+			}
 		}
-	}
+	}()
 
+	go func() {
+		for {
+			time.Sleep(time.Second * 3)
+			if r.Role == "candidate" || r.LastHeartbeatTime == 0 {
+				continue
+			}
+			if time.Now().Unix()-r.LastHeartbeatTime > r.Timeout {
+				r.Role = "candidate"
+				r.VotedCount = 0
+			}
+		}
+	}()
 }
