@@ -1,26 +1,42 @@
 package raft
 
 import (
-	"fmt"
+	"strconv"
+
 	"github.com/kylin-ops/raft/http/httpserver"
 	"github.com/kylin-ops/raft/logger"
 	"github.com/kylin-ops/raft/raft"
 )
 
+type Options struct {
+	Id         string                  //本节点id
+	Address    string                  // 本节点的通信地址ip/域名
+	Port       int                     // 本节点的通信端口
+	Logger     logger.Logger           // 日志接口
+	Members    map[string]*raft.Member // raft集群成员
+	Timeout    int64                   // 多少秒没有收到心跳置为超时
+	NoElection bool                    // 本节点是否不参加leader选举
+}
 
+func StartRaft(option *Options) {
+	if option.Timeout == 0 {
+		option.Timeout = 5
+	}
 
-func StartRaft(id, addr string, port int, logg logger.Logger, members ...raft.Member) {
-	r := raft.Raft{Address: fmt.Sprintf("%s:%d", addr, port), Role: "candidate", Id: id, Timeout: 5}
-	if logg == nil {
+	r := raft.Raft{
+		Address:    option.Address + ":" + strconv.Itoa(option.Port),
+		Role:       "candidate",
+		Id:         option.Id,
+		Timeout:    option.Timeout,
+		Members:    option.Members,
+		NoElection: option.NoElection,
+		Logger:     option.Logger,
+	}
+	if r.Logger == nil {
 		r.Logger = &logger.Log{}
 	}
-	var _members = map[string]*raft.Member{}
-	for _, member := range members {
-		_members[member.Id] = &raft.Member{Address: member.Address, Id: member.Id}
-	}
-	r.Members = _members
 	raft.RaftInstance = &r
-	go httpserver.StartHttpServer(addr, port, r.Logger)
+	go httpserver.StartHttpServer("0.0.0.0", option.Port, r.Logger)
 	go r.BackendElection()
 	go r.BackendHeatbeat()
 	go r.BackendReCandidate()
