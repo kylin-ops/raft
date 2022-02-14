@@ -22,10 +22,10 @@ func StartRaft(option *Options) {
 	if option.Timeout == 0 {
 		option.Timeout = 5
 	}
-
 	r := raft.Raft{
 		Address:    option.Address + ":" + strconv.Itoa(option.Port),
 		Role:       "candidate",
+		// Role:       "leader",
 		Id:         option.Id,
 		Timeout:    option.Timeout,
 		Members:    option.Members,

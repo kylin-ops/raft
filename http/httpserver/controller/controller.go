@@ -41,5 +41,7 @@ func SyncMemberRequest(resp http.ResponseWriter, req *http.Request) {
 }
 
 func GetRaftInfo(resp http.ResponseWriter, req *http.Request){
+	raft.RaftInstance.Mu.Lock()
 	tools.ApiResponse(resp, 200, raft.RaftInstance, "")
+	raft.RaftInstance.Mu.Unlock()
 }
