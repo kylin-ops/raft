@@ -50,7 +50,7 @@ func (r *Raft) BackendReCandidate() {
 					if time.Now().Unix()-m.LastHeartbeatTime > r.Timeout {
 						r.Mu.Lock()
 						for id := range r.Members {
-							r.Members[id].Status = ""
+							r.Members[id].ElectionStatus = ""
 						}
 						r.Mu.Unlock()
 					}
@@ -69,7 +69,7 @@ func (r *Raft) BackendReCandidate() {
 				for id := range r.Members {
 					r.Members[id].LeaderId = ""
 					r.Members[id].Role = ""
-					r.Members[id].Status = ""
+					r.Members[id].ElectionStatus = ""
 				}
 				r.Mu.Unlock()
 				r.Logger.Debugf("初始化 - 心跳超时，节点初始化重新参与选举")

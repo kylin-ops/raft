@@ -78,7 +78,7 @@ func (r *Raft) ServiceResponseSyncMember(members map[string]*Member) {
 }
 
 func (r *Raft) sendElectionVotes(m *Member) {
-	if m.Status == "ok" {
+	if m.ElectionStatus == "ok" {
 		r.Logger.Debugf("%s节点准备向%s节点发起投票请求 - %s选票已经使用,不需要重复投票,当前已获得选票数%d", r.Id, m.Id, m.Id, r.VotedCount)
 		return
 	}
@@ -99,9 +99,7 @@ func (r *Raft) sendElectionVotes(m *Member) {
 	if resp.StatusCode() == 201 {
 		msg, _ := resp.Text()
 		r.Mu.Lock()
-		fmt.Println(r.Members[r.Id].Status)
-
-		r.Members[r.Id].Status = "ok"
+		r.Members[r.Id].ElectionStatus = "ok"
 		r.Mu.Unlock()
 		r.Logger.Debugf("%s节点请求%s节点的选票 - 选票投给其他节点 %s", r.Id, m.Id, msg)
 		return
@@ -111,7 +109,8 @@ func (r *Raft) sendElectionVotes(m *Member) {
 		return
 	}
 	r.Mu.Lock()
-	r.Members[m.Id].Status = "ok"
+	r.Members[m.Id].ElectionStatus = "ok"
+	r.Members[m.Id].HeartbeatStatus = "ok"
 	r.CurrentTerm++
 	r.TempTerm = r.CurrentTerm
 	r.VotedCount++
@@ -155,26 +154,52 @@ func (r *Raft) sendHeartbeat(m *Member) error {
 		Json:    true,
 		Timeout: time.Second * 1,
 	})
+
+	r.Mu.Lock()
+	r.Members[m.Id].Role = "follower"
+	if m.Id == r.Id {
+		r.Members[m.Id].Role = "leader"
+	}
+	r.Members[m.Id].LeaderId = r.Id
+	r.Mu.Unlock()
+
 	if err != nil {
 		// r.Logger.Warnf("heartbeat - 向%s发送心跳信息错误, 错误信息:%s", m.Address, err.Error())
+		if time.Now().Unix()-r.Members[m.Id].LastHeartbeatTime > 5 {
+			r.Members[m.Id].HeartbeatStatus = "error"
+		}
 		return err
 	}
+
 	if resp.StatusCode() == 201 {
 		msg, _ := resp.Text()
 		r.Mu.Lock()
-		r.Members[m.Id].Status = "ok"
+		r.Members[m.Id].ElectionStatus = "ok"
+		if time.Now().Unix()-r.Members[m.Id].LastHeartbeatTime > 5 {
+			r.Members[m.Id].HeartbeatStatus = "failed"
+		}
 		r.Mu.Unlock()
 		// r.Logger.Debugf("heartbeat - %s 心跳信息处理失败: %s", m.Address, msg)
 		return fmt.Errorf("%s 心跳信息处理失败,返回信息:%s", m.Address, msg)
 	}
 	if resp.StatusCode() != 200 {
 		// r.Logger.Warnf("heartbeat - %s 心跳信息发生失败", m.Address)
+		r.Mu.Lock()
+		if time.Now().Unix()-r.Members[m.Id].LastHeartbeatTime > 5 {
+			r.Members[m.Id].HeartbeatStatus = "error"
+		}
+		r.Mu.Unlock()
 		return fmt.Errorf("%s 心跳信息发生失败,返回code:%d", m.Address, resp.StatusCode())
 	}
 	r.Mu.Lock()
 	if _, ok := r.Members[m.Id]; ok {
 		//t := time.Now().Unix()
-		r.Members[m.Id].LastHeartbeatTime = time.Now().Unix()
+		r.Members[m.Id].ElectionStatus = "ok"
+		r.Members[m.Id].HeartbeatStatus = "ok"
+		if time.Now().Unix() > r.Members[m.Id].LastHeartbeatTime {
+			r.Members[m.Id].LastHeartbeatTime = time.Now().Unix()
+		}
+
 		// r.Logger.Infof("heartbeat - 更新%s的hearbeat时间%d", m.Id, t)
 	}
 	r.Mu.Unlock()
