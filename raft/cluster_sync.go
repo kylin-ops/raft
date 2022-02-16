@@ -147,7 +147,7 @@ func (r *Raft) sendElectionVotesToAllMember() {
 }
 
 // 发送心跳信息
-func (r *Raft) sendHeartbeat(m *Member) error {
+func (r *Raft) sendHeartbeat(m Member) error {
 	url := "http://" + m.Address + "/api/v1/heartbeat"
 	resp, err := grequest.Post(url, &grequest.RequestOptions{
 		Data:    Leader{LeaderId: r.Id, Term: r.CurrentTerm},
@@ -191,15 +191,13 @@ func (r *Raft) sendHeartbeat(m *Member) error {
 		r.Mu.Unlock()
 		return fmt.Errorf("%s 心跳信息发生失败,返回code:%d", m.Address, resp.StatusCode())
 	}
+	t := time.Now().Unix()
 	r.Mu.Lock()
 	if _, ok := r.Members[m.Id]; ok {
 		//t := time.Now().Unix()
 		r.Members[m.Id].ElectionStatus = "ok"
 		r.Members[m.Id].HeartbeatStatus = "ok"
-		if time.Now().Unix() > r.Members[m.Id].LastHeartbeatTime {
-			r.Members[m.Id].LastHeartbeatTime = time.Now().Unix()
-		}
-
+		r.Members[m.Id].LastHeartbeatTime = t
 		// r.Logger.Infof("heartbeat - 更新%s的hearbeat时间%d", m.Id, t)
 	}
 	r.Mu.Unlock()
@@ -207,13 +205,12 @@ func (r *Raft) sendHeartbeat(m *Member) error {
 }
 
 // 发送同步成员信息
-func (r *Raft) syncMember(m *Member) error {
-	var members map[string]*Member
+func (r *Raft) syncMember(m Member) error {
+	var members map[string]Member
 	r.Mu.Lock()
 	data, _ := json.Marshal(r.Members)
 	r.Mu.Unlock()
 	_ = json.Unmarshal(data, &members)
-	fmt.Println(string(data))
 	_, err := grequest.Post("http://"+m.Address+"/api/v1/sync_member", &grequest.RequestOptions{
 		Data:    members,
 		Json:    true,
@@ -222,24 +219,50 @@ func (r *Raft) syncMember(m *Member) error {
 	return err
 }
 
+func (r *Raft) updateMemberStatus(){
+	r.Mu.Lock()
+	defer r.Mu.Unlock()
+	for id := range r.Members {
+		r.Members[id].HeartbeatStatus = "online"
+		if time.Now().Unix() - r.Members[id].LastHeartbeatTime > 5 {
+			r.Members[id].HeartbeatStatus = "offline"
+		}
+	}
+}
+
 // 向所有成员发生心跳信息,并向成员发生成员信息
 func (r *Raft) sendHeartbeatToAllMember() {
-	var members map[string]*Member
+	var members map[string]Member
 	r.Mu.Lock()
 	data, _ := json.Marshal(r.Members)
 	r.Mu.Unlock()
 	_ = json.Unmarshal(data, &members)
 	wg := sync.WaitGroup{}
+	var memberAddr []string
 	for _, _member := range members {
 		wg.Add(1)
-		go func(m *Member) {
+		go func(m Member) {
 			defer wg.Done()
 			if err := r.sendHeartbeat(m); err != nil {
 				r.Logger.Warnf("heartbeat - %s", err.Error())
 				return
 			}
-			r.syncMember(m)
+			memberAddr = append(memberAddr, m.Id)
 		}(_member)
 	}
 	wg.Wait()
+	r.updateMemberStatus()
+	members = map[string]Member{}
+	r.Mu.Lock()
+	data, _ = json.Marshal(r.Members)
+	r.Mu.Unlock()
+	_ = json.Unmarshal(data, &members)
+	for _, id := range memberAddr {
+		wg.Add(1)
+		go func (i string)  {
+			defer wg.Done()
+			r.syncMember(members[i])
+		}(id)
+	}
+
 }
