@@ -24,7 +24,7 @@ func (r *Raft) BackendElection() {
 // 后台有leader发生心跳信息
 func (r *Raft) BackendHeatbeat() {
 	for {
-		if (r.Role == "leader" && r.CurrentLeader == r.Id) || len(r.Members)/2 < r.VotedCount {
+		if (r.Role == "leader" && r.CurrentLeader == r.Id && len(r.Members)/2 < r.VotedCount ){
 			r.Logger.Debugf("send heatbert")
 			r.sendHeartbeatToAllMember()
 		} 
