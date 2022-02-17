@@ -22,6 +22,9 @@ func (r *Raft)ElectionResponse(leader *Leader)error{
 func (r *Raft)HeartbeatResponse(body *HeartbeatBody)error {
 	r.Mu.Lock()
 	defer r.Mu.Unlock()
+	if r.DefaultLeader == r.Id && r.Id != body.Leader {
+		return fmt.Errorf("本节点设置默认leader与心跳leader不一致")
+	}
 	r.VotedFor = body.Leader
 	if r.Id == body.Leader {
 		r.Role = "leader"
