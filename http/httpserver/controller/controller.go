@@ -32,15 +32,8 @@ func HeartbeatRequest(resp http.ResponseWriter, req *http.Request) {
 	tools.ApiResponse(resp, 200, "", "")
 }
 
-// func SyncMemberRequest(resp http.ResponseWriter, req *http.Request) {
-// 	var body map[string]*raft.Member
-// 	data, _ := ioutil.ReadAll(req.Body)
-// 	_ = json.Unmarshal(data, &body)
-// 	raft.RaftInstance.ServiceResponseSyncMember(body)
-// 	tools.ApiResponse(resp, 200, "", "")
-// }
-
 func GetRaftInfo(resp http.ResponseWriter, req *http.Request){
+	resp.Header().Set("content-type","application/json")
 	raft.RaftInstance.Mu.Lock()
 	tools.ApiResponse(resp, 200, raft.RaftInstance, "")
 	raft.RaftInstance.Mu.Unlock()

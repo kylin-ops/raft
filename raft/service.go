@@ -46,3 +46,4 @@ func (r *Raft)SetLeaderResponse(id string)error{
 	}
 	return nil
 }
+

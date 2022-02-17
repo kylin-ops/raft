@@ -78,11 +78,13 @@ func (r *Raft) requestHeartbeat(m *Member, heart *HeartbeatBody){
 	defer r.Mu.Unlock()
 	r.Members[m.Id].HeartbeatStatus = "online"
 	r.Members[m.Id].LastHeartbeatTime = time.Now().Unix()
+	r.Members[m.Id].LeaderId = r.CurrentLeader
+	role := "follower"
+	if m.Id == r.Id {
+		role = "leader"
+	}
+	r.Members[m.Id].Role = role
 	r.Logger.Debugf("向%s发送心跳成功", m.Id)
-}
-
-func (r *Raft) requestSetLeader(id string){
-	
 }
 
 // 向所有成员发生选举信息
