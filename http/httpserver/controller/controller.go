@@ -12,7 +12,7 @@ func ElectionRequest(resp http.ResponseWriter, req *http.Request) {
 	var body raft.Leader
 	data, _ := ioutil.ReadAll(req.Body)
 	_ = json.Unmarshal(data, &body)
-	if err := raft.RaftInstance.ServiceResponseElection(&body); err != nil {
+	if err := raft.RaftInstance.ElectionResponse(&body); err != nil {
 		raft.RaftInstance.Logger.Warnf("response election - %s", err.Error())
 		tools.ApiResponse(resp, 201, "", err.Error())
 		return
@@ -21,10 +21,10 @@ func ElectionRequest(resp http.ResponseWriter, req *http.Request) {
 }
 
 func HeartbeatRequest(resp http.ResponseWriter, req *http.Request) {
-	var body raft.Leader
+	var body raft.HeartbeatBody
 	data, _ := ioutil.ReadAll(req.Body)
 	_ = json.Unmarshal(data, &body)
-	if err := raft.RaftInstance.ServiceResponseHeartbeat(&body); err != nil {
+	if err := raft.RaftInstance.HeartbeatResponse(&body); err != nil {
 		raft.RaftInstance.Logger.Warnf("response heartbeat - %s", err.Error())
 		tools.ApiResponse(resp, 201, "", err.Error())
 		return
@@ -32,13 +32,13 @@ func HeartbeatRequest(resp http.ResponseWriter, req *http.Request) {
 	tools.ApiResponse(resp, 200, "", "")
 }
 
-func SyncMemberRequest(resp http.ResponseWriter, req *http.Request) {
-	var body map[string]*raft.Member
-	data, _ := ioutil.ReadAll(req.Body)
-	_ = json.Unmarshal(data, &body)
-	raft.RaftInstance.ServiceResponseSyncMember(body)
-	tools.ApiResponse(resp, 200, "", "")
-}
+// func SyncMemberRequest(resp http.ResponseWriter, req *http.Request) {
+// 	var body map[string]*raft.Member
+// 	data, _ := ioutil.ReadAll(req.Body)
+// 	_ = json.Unmarshal(data, &body)
+// 	raft.RaftInstance.ServiceResponseSyncMember(body)
+// 	tools.ApiResponse(resp, 200, "", "")
+// }
 
 func GetRaftInfo(resp http.ResponseWriter, req *http.Request){
 	raft.RaftInstance.Mu.Lock()

@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"encoding/json"
 	"math/rand"
 	"time"
 )
@@ -15,23 +14,41 @@ func (r *Raft) BackendElection() {
 			continue
 		}
 		time.Sleep(time.Duration(rand.Intn(150)+150) * time.Millisecond)
-		r.sendElectionVotesToAllMember()
-		// d, err := json.Marshal(r)
-		// fmt.Println(string(d), err)
+		r.sendElectionToALLMembers()
 	}
 }
 
 // 后台有leader发生心跳信息
 func (r *Raft) BackendHeatbeat() {
 	for {
-		if (r.Role == "leader" && r.CurrentLeader == r.Id && len(r.Members)/2 < r.VotedCount ){
+		if r.Role == "leader" && r.CurrentLeader == r.Id && len(r.Members)/2 < r.VotedCount {
 			r.Logger.Debugf("send heatbert")
-			r.sendHeartbeatToAllMember()
-		} 
+			r.sendHeartbeatToAllMembers()
+		}
 		// else {
 		// 	r.Logger.Debugf("heartbeat - 节点%s的角色是%s,当前的leader是%s,选票有%d", r.Id, r.Role, r.CurrentLeader, r.VotedCount)
 		// }
 		time.Sleep(time.Second)
+	}
+}
+
+func (r *Raft) BackendDefaultLeader() {
+	for {
+		time.Sleep(time.Second * 1)
+		if r.DefaultLeader == r.Id {
+			if r.Role != "leader" || r.VotedFor != r.Id {
+				r.Mu.Lock()
+				if r.Role != "leader" {
+					r.Role = "leader"
+				}
+				if r.VotedFor != r.Id {
+					r.VotedFor = r.Id
+				}
+				r.CurrentLeader = r.Id
+				r.VotedCount = len(r.Members)
+				r.Mu.Unlock()
+			}
+		}
 	}
 }
 
@@ -40,11 +57,11 @@ func (r *Raft) BackendReCandidate() {
 	go func() {
 		for {
 			time.Sleep(time.Second * 1)
-			var members map[string]*Member
-			r.Mu.Lock()
-			data, _ := json.Marshal(r.Members)
-			r.Mu.Unlock()
-			_ = json.Unmarshal(data, &members)
+			if r.DefaultLeader == r.Id {
+				continue
+			}
+
+			members := r.GetMembers()
 			if r.Role == "candidate" {
 				for _, m := range members {
 					if time.Now().Unix()-m.LastHeartbeatTime > r.Timeout {

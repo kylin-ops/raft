@@ -15,8 +15,10 @@ func main()  {
 
 	var port int
 	var Id  string
+	var leader string
 	flag.IntVar(&port, "port", 8080, "服务端口号")
 	flag.StringVar(&Id, "id", "id-1", "成员id")
+	flag.StringVar(&leader, "leader", "", "默认leader")
 	flag.Parse()
 
 	raft2.StartRaft(&raft2.Options{
@@ -24,5 +26,6 @@ func main()  {
 		Port: port,
 		Id: Id,
 		Members: members,
+		DefaultLeader: leader,
 	})
 }

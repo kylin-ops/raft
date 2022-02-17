@@ -31,7 +31,7 @@ func StartHttpServer(Host string, port int, logg logger.Logger) {
 	addr := fmt.Sprintf("%s:%d", Host, port)
 	http.HandleFunc("/api/v1/election", controller.ElectionRequest)
 	http.HandleFunc("/api/v1/heartbeat", controller.HeartbeatRequest)
-	http.HandleFunc("/api/v1/sync_member", controller.SyncMemberRequest)
+	//http.HandleFunc("/api/v1/sync_member", controller.SyncMemberRequest)
 	http.HandleFunc("/api/v1/get_info", controller.GetRaftInfo)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalln(err.Error())
