@@ -4,6 +4,7 @@ import (
 	"flag"
 
 	"github.com/kylin-ops/raft"
+	"github.com/kylin-ops/raft/health"
 )
 
 func main() {
@@ -29,6 +30,7 @@ func main() {
 		DefaultLeader: leader,
 		NoElection: noElection,
 		Members: members,
+		HealthChecker: &health.Default{},
 	})
 	r.Start()
 }

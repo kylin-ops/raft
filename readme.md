@@ -15,15 +15,18 @@ import (
 	"flag"
 
 	"github.com/kylin-ops/raft"
+	"github.com/kylin-ops/raft/health"
 )
 
 func main() {
+	// 配置成员
 	members := map[string]*raft.Member{
 		"id-1": {Id: "id-1", Address: "127.0.0.1:8080"},
 		"id-2": {Id: "id-2", Address: "127.0.0.1:8081"},
 		"id-3": {Id: "id-3", Address: "127.0.0.1:8082"},
 	}
 
+	// 命令接收参数
 	var addr string
 	var Id string
 	var leader string
@@ -40,6 +43,7 @@ func main() {
 		DefaultLeader: leader,
 		NoElection: noElection,
 		Members: members,
+		HealthChecker: &health.Default{},
 	})
 	r.Start()
 }
