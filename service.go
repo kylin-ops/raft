@@ -29,19 +29,9 @@ func (r *Raft) ElectionResponse(leader *Leader) error {
 }
 
 func (r *Raft) HeartbeatResponse(body *HeartbeatBody) error {
-	var healthCheck = map[string]health.Checker{
-		"http":    &health.Http{},
-		"command": &health.Command{},
-		"default": &health.Default{},
-	}
-	check, ok := healthCheck[r.HealthCheckType]
-	if !ok {
-		check = healthCheck["default"]
-		r.Logger.Warnf("指定的healthCheck类型不存在，使用默认default类型")
-	}
-	err := check.Do()
+	err := r.HealthChecker.Do()
 	if err != nil {
-		d, _ := json.Marshal(check)
+		d, _ := json.Marshal(r.HealthChecker)
 		r.Logger.Warnf("心跳check错误,执行信息:%s 错误信息:%s", string(d), err.Error())
 	}
 
