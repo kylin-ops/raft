@@ -45,8 +45,9 @@ type Raft struct {
 	Timeout           int64              `json:"timeout"`             // 超时时间心跳超过多少时间需要初始化重新选举
 	Members           map[string]*Member `json:"members"`             // 所有成员
 	Logger            logger.Logger      `json:"-"`
-	NoElection        bool               `json:"NoElection"`     // 不参与leader选举
-	DefaultLeader     string             `json:"default_leader"` //
+	NoElection        bool               `json:"NoElection"`          // 不参与leader选举
+	DefaultLeader     string             `json:"default_leader"`      //
+	HealthCheckType   string			 `json:"health_check_type"`   
 }
 
 func (r *Raft) GetMembers() map[string]*Member {

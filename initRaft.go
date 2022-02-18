@@ -17,12 +17,17 @@ type Options struct {
 	Timeout       int64                   // 多少秒没有收到心跳置为超时
 	NoElection    bool                    // 本节点是否不参加leader选举
 	DefaultLeader string                  // 默认leader
+	HealthCheckType string
 }
 
 func StartRaft(option *Options) {
 	if option.Timeout == 0 {
 		option.Timeout = 5
 	}
+	if option.HealthCheckType == "" {
+		option.HealthCheckType = "default"
+	}
+
 	r := raft.Raft{
 		Address: option.Address + ":" + strconv.Itoa(option.Port),
 		Role:    "candidate",
@@ -33,6 +38,7 @@ func StartRaft(option *Options) {
 		NoElection: option.NoElection,
 		Logger:     option.Logger,
 		DefaultLeader: option.DefaultLeader,
+		HealthCheckType: option.HealthCheckType,
 	}
 	if r.Logger == nil {
 		r.Logger = &logger.Log{}
