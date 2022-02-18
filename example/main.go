@@ -2,30 +2,33 @@ package main
 
 import (
 	"flag"
-	raft2 "github.com/kylin-ops/raft"
-	"github.com/kylin-ops/raft/raft"
+
+	"github.com/kylin-ops/raft"
 )
 
-func main()  {
+func main() {
 	members := map[string]*raft.Member{
-		"id-1":{Id: "id-1", Address: "127.0.0.1:8080"},
-		"id-2":{Id: "id-2", Address: "127.0.0.1:8081"},
-		"id-3":{Id: "id-3", Address: "127.0.0.1:8082"},
+		"id-1": {Id: "id-1", Address: "127.0.0.1:8080"},
+		"id-2": {Id: "id-2", Address: "127.0.0.1:8081"},
+		"id-3": {Id: "id-3", Address: "127.0.0.1:8082"},
 	}
 
-	var port int
-	var Id  string
+	var addr string
+	var Id string
 	var leader string
-	flag.IntVar(&port, "port", 8080, "服务端口号")
+	var noElection bool
+	flag.StringVar(&addr, "addr", "0.0.0.0:8080", "服务端口号")
 	flag.StringVar(&Id, "id", "id-1", "成员id")
 	flag.StringVar(&leader, "leader", "", "默认leader")
+	flag.BoolVar(&noElection, "no_election", false, "不参加选取")
 	flag.Parse()
 
-	raft2.StartRaft(&raft2.Options{
-		Address: "0.0.0.0",
-		Port: port,
+	r := raft.NewRaft(&raft.Options{
 		Id: Id,
-		Members: members,
+		Address: addr,
 		DefaultLeader: leader,
+		NoElection: noElection,
+		Members: members,
 	})
+	r.Start()
 }

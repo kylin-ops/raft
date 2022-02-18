@@ -1,18 +1,11 @@
+// 响应服务请求
 package raft
 
 import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/kylin-ops/raft/raft/health"
 )
-
-var healthCheck = map[string]health.Checker{
-	"http":    &health.Http{},
-	"command": &health.Command{},
-	"default": &health.Default{},
-}
 
 func (r *Raft) ElectionResponse(leader *Leader) error {
 	r.Mu.Lock()

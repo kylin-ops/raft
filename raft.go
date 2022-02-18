@@ -1,20 +1,22 @@
+// raft主数据结构
 package raft
 
 import (
 	"encoding/json"
 	"sync"
 
+	"github.com/kylin-ops/raft/health"
+
 	"github.com/kylin-ops/raft/logger"
-	"github.com/kylin-ops/raft/raft/health"
 )
 
 var RaftInstance *Raft
 
 type Options struct {
 	Id            string             `json:"id"`             // 本节点id
-	Port          int                `json:"port"`           // 集群通信地址
+	Address       string             `json:"string"`         // 集群通信地址
 	Members       map[string]*Member `json:"members"`        // raft集群成员
-	Timeout       int64              `json:'timeout'`        // 多少秒没有收到心跳置为超时
+	Timeout       int64              `json:"timeout"`        // 多少秒没有收到心跳置为超时
 	NoElection    bool               `json:"no_election"`    // 本节点是否不参加leader选举
 	DefaultLeader string             `json:"default_leader"` // 默认leader
 	HealthChecker health.Checker     `json:"-"`
@@ -71,7 +73,7 @@ func (r *Raft) GetMembers() map[string]*Member {
 }
 
 func (r *Raft) Start() {
-	//go httpserver.StartHttpServer("0.0.0.0", r.Port, r.Logger)
+	go r.httpServer()
 	go r.BackendElection()
 	go r.BackendHeatbeat()
 	go r.BackendReCandidate()
@@ -80,8 +82,18 @@ func (r *Raft) Start() {
 }
 
 func NewRaft(o *Options) *Raft {
+	if o.Timeout == 0 {
+		o.Timeout = 5
+	}
+	if o.HealthChecker == nil {
+		o.HealthChecker = &health.Default{}
+	}
+	if o.Logger == nil {
+		o.Logger = &logger.Log{}
+	}
 
 	return &Raft{
 		Options: *o,
+		Role: "candidate",
 	}
 }

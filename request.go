@@ -1,3 +1,4 @@
+// 发生请求信息
 package raft
 
 import (
