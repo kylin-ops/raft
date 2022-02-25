@@ -77,9 +77,9 @@ func (r *Raft) MemberForwardLeaderResponse(action, id, address string) error {
 	r.Mu.Unlock()
 	switch action{
 	case "add":
-		uri = UriAddMember
+		uri = UriAddMemberExec
 	case "del":
-		uri = UriDelMember
+		uri = UriDelMemberExec
 	default:
 		return fmt.Errorf("不支持%s操作", action)
 	}

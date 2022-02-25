@@ -18,7 +18,7 @@ func (r *Raft) requestElection(m *Member) {
 		return
 	}
 
-	addr := "http://" + m.Address + "/api/v1/election"
+	addr := "http://" + m.Address + UriElection
 	resp, err := grequest.Post(addr, &grequest.RequestOptions{
 		Data:    Leader{LeaderId: r.Id},
 		Json:    true,
@@ -59,7 +59,7 @@ func (r *Raft) requestHeartbeat(m *Member, heart *HeartbeatBody){
 		r.Logger.Debugf("%s不是leader不能发送心跳信息", r.Id)
 		return
 	}
-	addr := "http://" + m.Address + "/api/v1/heartbeat"
+	addr := "http://" + m.Address + UriHeartbeat
 	resp, err := grequest.Post(addr, &grequest.RequestOptions{
 		Data:    heart,
 		Json:    true,

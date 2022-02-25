@@ -47,5 +47,23 @@ func main() {
 	})
 	r.Start()
 }
+```
 
+# 3 添加删除成员
+```
+添加成员
+curl --location --request POST 'http://127.0.0.1:8080/api/v1/add_member' \
+--header 'Content-Type: application/json' \
+--data '{
+    "id": "id-4",
+    "address": "127.0.0.1:8083"
+}'
+
+删除成员
+curl --location --request POST 'http://127.0.0.1:8080/api/v1/del_member' \
+--header 'Content-Type: application/json' \
+--data '{
+    "id": "id-4",
+    "address": "127.0.0.1:8083"
+}'
 ```

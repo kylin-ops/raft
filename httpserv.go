@@ -11,28 +11,29 @@ import (
 )
 
 var (
-	UriElection         = "/api/v1/election"
-	UriHeartbeat        = "/api/v1/heartbeat"
-	UriGetInfo          = "/api/v1/get_info"
-	UriAddMemberForward = "/api/v1/add_member/forward"
-	UriDelMemberForward = "/api/v1/del_member/forward"
-	UriAddMember        = "/api/v1/add_member"
-	UriDelMember        = "/api/v1/del_member"
+	UriElection      = "/api/v1/election"
+	UriHeartbeat     = "/api/v1/heartbeat"
+	UriGetInfo       = "/api/v1/get_info"
+	UriAddMember     = "/api/v1/add_member"
+	UriDelMember     = "/api/v1/del_member"
+	UriAddMemberExec = "/api/v1/add_member/exec"
+	UriDelMemberExec = "/api/v1/del_member/exec"
 )
 
 func (r *Raft) httpServer() {
 	http.HandleFunc(UriElection, r.electionRequest)
 	http.HandleFunc(UriHeartbeat, r.heartbeatRequest)
 	http.HandleFunc(UriGetInfo, r.getRaftInfo)
-	http.HandleFunc(UriAddMemberForward, r.addMemberForward)
 	http.HandleFunc(UriAddMember, r.addMember)
-	http.HandleFunc(UriDelMemberForward, r.delMemberForward)
+	http.HandleFunc(UriAddMemberExec, r.addMemberExec)
+	http.HandleFunc(UriDelMemberExec, r.delMemberExec)
 	http.HandleFunc(UriDelMember, r.delMember)
 	if err := http.ListenAndServe(r.Address, nil); err != nil {
 		log.Fatalln(err.Error())
 	}
 }
 
+// 集群leader选举
 func (r *Raft) electionRequest(resp http.ResponseWriter, req *http.Request) {
 	var body Leader
 	data, _ := ioutil.ReadAll(req.Body)
@@ -45,6 +46,7 @@ func (r *Raft) electionRequest(resp http.ResponseWriter, req *http.Request) {
 	tools.ApiResponse(resp, 200, "", "")
 }
 
+// 集群心跳
 func (r *Raft) heartbeatRequest(resp http.ResponseWriter, req *http.Request) {
 	var body HeartbeatBody
 	data, _ := ioutil.ReadAll(req.Body)
@@ -57,6 +59,7 @@ func (r *Raft) heartbeatRequest(resp http.ResponseWriter, req *http.Request) {
 	tools.ApiResponse(resp, 200, "", "")
 }
 
+// 获取集群信息
 func (r *Raft) getRaftInfo(resp http.ResponseWriter, req *http.Request) {
 	resp.Header().Set("content-type", "application/json")
 	r.Mu.Lock()
@@ -64,7 +67,8 @@ func (r *Raft) getRaftInfo(resp http.ResponseWriter, req *http.Request) {
 	r.Mu.Unlock()
 }
 
-func (r *Raft) addMemberForward(resp http.ResponseWriter, req *http.Request) {
+// 添加集群成员，请求转发到leader
+func (r *Raft) addMember(resp http.ResponseWriter, req *http.Request) {
 	var body map[string]string
 	data, _ := ioutil.ReadAll(req.Body)
 	_ = json.Unmarshal(data, &body)
@@ -76,7 +80,8 @@ func (r *Raft) addMemberForward(resp http.ResponseWriter, req *http.Request) {
 	tools.ApiResponse(resp, 200, "", "")
 }
 
-func (r *Raft) delMemberForward(resp http.ResponseWriter, req *http.Request) {
+// 删除集群成员，请求转发到leader
+func (r *Raft) delMember(resp http.ResponseWriter, req *http.Request) {
 	var body map[string]string
 	data, _ := ioutil.ReadAll(req.Body)
 	_ = json.Unmarshal(data, &body)
@@ -88,7 +93,8 @@ func (r *Raft) delMemberForward(resp http.ResponseWriter, req *http.Request) {
 	tools.ApiResponse(resp, 200, "", "")
 }
 
-func (r *Raft) addMember(resp http.ResponseWriter, req *http.Request) {
+// leader执行添加集群成员
+func (r *Raft) addMemberExec(resp http.ResponseWriter, req *http.Request) {
 	var body map[string]string
 	data, _ := ioutil.ReadAll(req.Body)
 	_ = json.Unmarshal(data, &body)
@@ -100,7 +106,8 @@ func (r *Raft) addMember(resp http.ResponseWriter, req *http.Request) {
 	tools.ApiResponse(resp, 200, "", "")
 }
 
-func (r *Raft) delMember(resp http.ResponseWriter, req *http.Request) {
+// leader执行删除集群成员
+func (r *Raft) delMemberExec(resp http.ResponseWriter, req *http.Request) {
 	var body map[string]string
 	data, _ := ioutil.ReadAll(req.Body)
 	_ = json.Unmarshal(data, &body)
